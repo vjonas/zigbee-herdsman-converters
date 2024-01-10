@@ -1,17 +1,14 @@
 import {
     batteryVoltageToPercentage,
-    calibrateAndPrecisionRoundOptions,
-    calibrateAndPrecisionRoundOptionsIsPercentual,
     postfixWithEndpointName,
     precisionRound,
-    getKey,
     assertNumber,
     getFromLookup,
 } from './utils';
 
-import * as exposes from './exposes';
 import * as globalStore from './store';
 import {Fz, Definition, KeyValue, KeyValueAny} from './types';
+import * as modernExtend from './modernExtend';
 
 declare type Day = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
 
@@ -186,7 +183,7 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
                 // https://github.com/Koenkk/zigbee2mqtt/issues/13253
             } else {
                 assertNumber(value);
-                payload.device_temperature = calibrateAndPrecisionRoundOptions(value, options, 'device_temperature'); // 0x03
+                payload.device_temperature = value; // 0x03
             }
             break;
         case '4':
@@ -204,7 +201,7 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
             }
             break;
         case '9':
-            if (['ZNLDP13LM'].includes(model.model)) {
+            if (['ZNLDP13LM', 'ZNXDD01LM'].includes(model.model)) {
                 // We don't know what the value means for these devices.
             }
             break;
@@ -218,13 +215,23 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
         case '11':
             if (['RTCGQ11LM'].includes(model.model)) {
                 assertNumber(value);
-                payload.illuminance = calibrateAndPrecisionRoundOptions(value, options, 'illuminance');
+                payload.illuminance = value;
                 // DEPRECATED: remove illuminance_lux here.
-                payload.illuminance_lux = calibrateAndPrecisionRoundOptions(value, options, 'illuminance_lux');
+                payload.illuminance_lux = value;
             }
             break;
         case '12':
-            if (['ZNLDP13LM'].includes(model.model)) {
+            if (['ZNLDP13LM', 'ZNXDD01LM'].includes(model.model)) {
+                // We don't know what the value means for these devices.
+            }
+            break;
+        case '13':
+            if (['ZNXDD01LM'].includes(model.model)) {
+                // We don't know what the value means for these devices.
+            }
+            break;
+        case '17':
+            if (['ZNXDD01LM'].includes(model.model)) {
                 // We don't know what the value means for these devices.
             }
             break;
@@ -258,7 +265,7 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
                 // @ts-expect-error
                 const temperature = parseFloat(value) / 100.0;
                 if (temperature > -65 && temperature < 65) {
-                    payload.temperature = calibrateAndPrecisionRoundOptions(temperature, options, 'temperature');
+                    payload.temperature = temperature;
                 }
             } else if (['RTCGQ11LM'].includes(model.model)) {
                 // It contains the occupancy, but in z2m we use a custom timer to do it, so we ignore it
@@ -275,7 +282,7 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
             } else if (['GZCGQ01LM'].includes(model.model)) {
                 // DEPRECATED: change illuminance_lux -> illuminance
                 assertNumber(value);
-                payload.illuminance_lux = calibrateAndPrecisionRoundOptions(value, options, 'illuminance_lux');
+                payload.illuminance_lux = value;
             } else {
                 payload.state = value === 1 ? 'ON' : 'OFF';
             }
@@ -304,14 +311,14 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
                 // https://github.com/Koenkk/zigbee2mqtt/issues/12596
                 assertNumber(value);
                 const illuminance = value > 65000 ? 0 : value;
-                payload.illuminance = calibrateAndPrecisionRoundOptions(illuminance, options, 'illuminance');
+                payload.illuminance = illuminance;
             } else if (['WSDCGQ01LM', 'WSDCGQ11LM', 'WSDCGQ12LM', 'VOCKQJK11LM'].includes(model.model)) {
                 // https://github.com/Koenkk/zigbee2mqtt/issues/798
                 // Sometimes the sensor publishes non-realistic vales, filter these
                 // @ts-expect-error
                 const humidity = parseFloat(value) / 100.0;
                 if (humidity >= 0 && humidity <= 100) {
-                    payload.humidity = calibrateAndPrecisionRoundOptions(humidity, options, 'humidity');
+                    payload.humidity = humidity;
                 }
             } else if (['ZNJLBL01LM', 'ZNCLDJ12LM'].includes(model.model)) {
                 payload.battery = value;
@@ -321,6 +328,8 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
                 payload.battery = precisionRound(battery, 2);
             } else if (['RTCZCGQ11LM'].includes(model.model)) {
                 payload.presence = getFromLookup(value, {0: false, 1: true, 255: null});
+            } else if (['ZNXDD01LM'].includes(model.model)) {
+                payload.brightness = value;
             }
             break;
         case '102':
@@ -328,7 +337,7 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
                 payload.state_right = value === 1 ? 'ON' : 'OFF';
             } else if (['WSDCGQ01LM', 'WSDCGQ11LM'].includes(model.model)) {
                 assertNumber(value);
-                payload.pressure = calibrateAndPrecisionRoundOptions(value/100.0, options, 'pressure');
+                payload.pressure = value/100.0;
             } else if (['WSDCGQ12LM'].includes(model.model)) {
                 // This pressure value is ignored because it is less accurate than reported in the 'scaledValue' attribute
                 // of the 'msPressureMeasurement' cluster
@@ -339,11 +348,16 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
                 } else {
                     payload.motion_sensitivity = getFromLookup(value, {1: 'low', 2: 'medium', 3: 'high'});
                 }
+            } else if (['ZNXDD01LM'].includes(model.model)) {
+                payload.color_temp = value;
             }
             break;
         case '103':
             if (['RTCZCGQ11LM'].includes(model.model)) {
                 payload.monitoring_mode = getFromLookup(value, {0: 'undirected', 1: 'left_right'});
+            } else if (['ZNXDD01LM'].includes(model.model)) {
+                // const color_temp_min = (value & 0xffff); // 2700
+                // const color_temp_max = (value >> 16) & 0xffff; // 6500
             }
             break;
         case '105':
@@ -372,23 +386,23 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
             break;
         case '149':
             assertNumber(value);
-            payload.energy = calibrateAndPrecisionRoundOptions(value, options, 'energy'); // 0x95
+            payload.energy = value, options; // 0x95
             // Consumption is deprecated
             payload.consumption = payload.energy;
             break;
         case '150':
             if (!['JTYJ-GD-01LM/BW'].includes(model.model)) {
                 assertNumber(value);
-                payload.voltage = calibrateAndPrecisionRoundOptions(value * 0.1, options, 'voltage'); // 0x96
+                payload.voltage = value * 0.1; // 0x96
             }
             break;
         case '151':
             if (['LLKZMK11LM'].includes(model.model)) {
                 assertNumber(value);
-                payload.current = calibrateAndPrecisionRoundOptions(value, options, 'current');
+                payload.current = value;
             } else {
                 assertNumber(value);
-                payload.current = calibrateAndPrecisionRoundOptions(value * 0.001, options, 'current');
+                payload.current = value * 0.001;
             }
             break;
         case '152':
@@ -396,11 +410,11 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
                 // We don't know what implies for this device, it contains values like 30, 50,... that don't seem to change
             } else {
                 assertNumber(value);
-                payload.power = calibrateAndPrecisionRoundOptions(value, options, 'power'); // 0x98
+                payload.power = value; // 0x98
             }
             break;
         case '154':
-            if (['ZNLDP13LM'].includes(model.model)) {
+            if (['ZNLDP13LM', 'ZNXDD01LM'].includes(model.model)) {
                 // We don't know what the value means for these devices.
             }
             break;
@@ -454,6 +468,11 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
                 payload.linkage_alarm = value === 1;
             }
             break;
+        case '238':
+            if (['ZNXDD01LM'].includes(model.model)) {
+                // We don't know what the value means for these devices.
+            }
+            break;
         case '240':
             payload.flip_indicator_light = value === 1 ? 'ON' : 'OFF';
             break;
@@ -489,11 +508,6 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
                 payload.motion_sensitivity = getFromLookup(value, {1: 'low', 2: 'medium', 3: 'high'});
             } else if (['JT-BZ-01AQ/A'].includes(model.model)) {
                 payload.gas_sensitivity = getFromLookup(value, {1: '15%LEL', 2: '10%LEL'});
-            }
-            break;
-        case '276':
-            if (['VOCKQJK11LM'].includes(model.model)) {
-                payload.display_unit = getKey(VOCKQJK11LMDisplayUnit, value);
             }
             break;
         case '293':
@@ -542,7 +556,7 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
             break;
         case '320':
             if (['MCCGQ13LM'].includes(model.model)) {
-                payload.battery_cover = getFromLookup(value, {0: 'CLOSE', 1: 'OPEN'});
+                payload.tamper = getFromLookup(value, {0: false, 1: true});
             }
             break;
         case '322':
@@ -699,6 +713,16 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
         case '1289':
             payload.dimmer_mode = getFromLookup(value, {3: 'rgbw', 1: 'dual_ct'});
             break;
+        case '1299':
+            if (['ZNXDD01LM'].includes(model.model)) {
+                // maximum color temp (6500)
+            }
+            break;
+        case '1300':
+            if (['ZNXDD01LM'].includes(model.model)) {
+                // minimum color temp (2700)
+            }
+            break;
         case '65281':
             {
                 // @ts-expect-error
@@ -733,6 +757,12 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
         case 'illuminance':
             // It contains the illuminance and occupancy, but in z2m we use a custom timer to do it, so we ignore it
             break;
+        case 'displayUnit':
+            // Use aqaraDisplayUnit modernExtend, but we add it here to not shown an unknown key in the log
+            break;
+        case 'airQuality':
+            // Use aqaraAirQuality modernExtend, but we add it here to not shown an unknown key in the log
+            break;
         default:
             if (meta.logger) meta.logger.debug(`${model.model}: unknown key ${key} with value ${value}`);
         }
@@ -741,34 +771,6 @@ export const numericAttributes2Payload = async (msg: Fz.Message, meta: Fz.Meta, 
     if (meta.logger) meta.logger.debug(`${model.model}: Processed data into payload ${JSON.stringify(payload)}`);
 
     return payload;
-};
-
-export const VOCKQJK11LMDisplayUnit = {
-    'mgm3_celsius': 0x00, // mg/m³, °C (default)
-    'ppb_celsius': 0x01, // ppb, °C
-    'mgm3_fahrenheit': 0x10, // mg/m³, °F
-    'ppb_fahrenheit': 0x11, // ppb, °F
-};
-
-export const numericAttributes2Options = (definition: Definition) => {
-    const supported = ['temperature', 'device_temperature', 'illuminance', 'illuminance_lux',
-        'pressure', 'power', 'current', 'voltage', 'energy', 'power'];
-    const precisionSupported = ['temperature', 'humidity', 'pressure', 'power', 'current', 'voltage', 'energy', 'power'];
-    const result = [];
-    // @ts-expect-error
-    for (const expose of definition.exposes) {
-        // only eletrical measurement voltage is supported, not battery
-        const isBatteryVoltage = expose.name === 'voltage' && definition.meta && definition.meta.battery;
-        if (supported.includes(expose.name) && !isBatteryVoltage) {
-            const type = calibrateAndPrecisionRoundOptionsIsPercentual(expose.name) ? 'percentual' : 'absolute';
-            result.push(exposes.options.calibration(expose.name, type));
-            if (precisionSupported.includes(expose.name)) {
-                result.push(exposes.options.precision(expose.name));
-            }
-        }
-    }
-
-    return result;
 };
 
 // For RTCZCGQ11LM
@@ -1314,10 +1316,109 @@ export const trv = {
 
 export const manufacturerCode = 0x115f;
 
+export const xiaomiModernExtend = {
+    xiaomiSwitchType: (args?: Partial<modernExtend.EnumLookupArgs>) => modernExtend.enumLookup({
+        name: 'switch_type',
+        lookup: {'toggle': 1, 'momentary': 2, 'none': 3},
+        cluster: 'aqaraOpple',
+        attribute: {ID: 0x000a, type: 0x20},
+        description: 'External switch type',
+        zigbeeCommandOptions: {manufacturerCode},
+        ...args,
+    }),
+    xiaomiPowerOnBehavior: (args?: Partial<modernExtend.EnumLookupArgs>) => modernExtend.enumLookup({
+        name: 'power_on_behavior',
+        lookup: {'on': 0, 'previous': 1, 'off': 2},
+        cluster: 'aqaraOpple',
+        attribute: {ID: 0x0517, type: 0x20},
+        description: 'Controls the behavior when the device is powered on after power loss',
+        zigbeeCommandOptions: {manufacturerCode},
+        ...args,
+    }),
+    xiaomiOperationMode: (args?: Partial<modernExtend.EnumLookupArgs>) => modernExtend.enumLookup({
+        name: 'operation_mode',
+        lookup: {'decoupled': 0, 'control_relay': 1},
+        cluster: 'aqaraOpple',
+        attribute: {ID: 0x0200, type: 0x20},
+        description: 'Decoupled mode for relay',
+        zigbeeCommandOptions: {manufacturerCode},
+        ...args,
+    }),
+    xiaomiAction: (args?: Partial<modernExtend.ActionEnumLookupArgs>) => modernExtend.actionEnumLookup({
+        lookup: {'single': 1},
+        cluster: 'genMultistateInput',
+        attribute: 'presentValue',
+        ...args,
+    }),
+    aqaraVoc: (args?: Partial<modernExtend.NumericArgs>) => modernExtend.numeric({
+        name: 'voc',
+        cluster: 'genAnalogInput',
+        attribute: 'presentValue',
+        reporting: {min: '10_SECONDS', max: '1_HOUR', change: 5},
+        description: 'Measured VOC value',
+        unit: 'ppb',
+        readOnly: true,
+        ...args,
+    }),
+    aqaraAirQuality: (args?: Partial<modernExtend.EnumLookupArgs>) => modernExtend.enumLookup({
+        name: 'air_quality',
+        lookup: {'excellent': 1, 'good': 2, 'moderate': 3, 'poor': 4, 'unhealthy': 5, 'unknown': 0},
+        cluster: 'aqaraOpple',
+        attribute: 'airQuality',
+        zigbeeCommandOptions: {disableDefaultResponse: true},
+        description: 'Measured air quality',
+        readOnly: true,
+        ...args,
+    }),
+    aqaraDisplayUnit: (args?: Partial<modernExtend.EnumLookupArgs>) => modernExtend.enumLookup({
+        name: 'display_unit',
+        lookup: {
+            'mgm3_celsius': 0x00, // mg/m³, °C (default)
+            'ppb_celsius': 0x01, // ppb, °C
+            'mgm3_fahrenheit': 0x10, // mg/m³, °F
+            'ppb_fahrenheit': 0x11, // ppb, °F
+        },
+        cluster: 'aqaraOpple',
+        attribute: 'displayUnit',
+        zigbeeCommandOptions: {disableDefaultResponse: true},
+        description: 'Units to show on the display',
+        ...args,
+    }),
+};
+
+export {xiaomiModernExtend as modernExtend};
+
+export const fromZigbee = {
+    xiaomi_basic: {
+        cluster: 'genBasic',
+        type: ['attributeReport', 'readResponse'],
+        convert: async (model, msg, publish, options, meta) => {
+            return await numericAttributes2Payload(msg, meta, model, options, msg.data);
+        },
+    } satisfies Fz.Converter,
+    xiaomi_basic_raw: {
+        cluster: 'genBasic',
+        type: ['raw'],
+        convert: async (model, msg, publish, options, meta) => {
+            let payload = {};
+            if (Buffer.isBuffer(msg.data)) {
+                const dataObject = buffer2DataObject(meta, model, msg.data);
+                payload = await numericAttributes2Payload(msg, meta, model, options, dataObject);
+            }
+            return payload;
+        },
+    } satisfies Fz.Converter,
+    aqara_opple: {
+        cluster: 'aqaraOpple',
+        type: ['attributeReport', 'readResponse'],
+        convert: async (model, msg, publish, options, meta) => {
+            return await numericAttributes2Payload(msg, meta, model, options, msg.data);
+        },
+    } satisfies Fz.Converter,
+};
+
 exports.buffer2DataObject = buffer2DataObject;
 exports.numericAttributes2Payload = numericAttributes2Payload;
-exports.numericAttributes2Options = numericAttributes2Options;
-exports.VOCKQJK11LMDisplayUnit = VOCKQJK11LMDisplayUnit;
 exports.fp1 = fp1;
 exports.trv = trv;
 exports.manufacturerCode = manufacturerCode;

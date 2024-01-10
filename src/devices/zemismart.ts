@@ -3,26 +3,48 @@ import fz from '../converters/fromZigbee';
 import * as legacy from '../lib/legacy';
 import tz from '../converters/toZigbee';
 import * as reporting from '../lib/reporting';
-import extend from '../lib/extend';
 import {Definition} from '../lib/types';
 const e = exposes.presets;
 import * as tuya from '../lib/tuya';
+import {forcePowerSource, light, onOff} from '../lib/modernExtend';
+
 const ea = exposes.access;
 
 const definitions: Definition[] = [
+    {
+        fingerprint: tuya.fingerprint('TS0601', ['_TZE200_1vxgqfba']),
+        model: 'ZM25R1',
+        vendor: 'Zemismart',
+        description: 'Tubular motor',
+        fromZigbee: [legacy.fromZigbee.tuya_cover],
+        toZigbee: [legacy.toZigbee.tuya_cover_control, legacy.toZigbee.tuya_cover_options, tuya.tz.datapoints],
+        exposes: [e.cover_position().setAccess('position', ea.STATE_SET),
+            e.enum('upper_stroke_limit', ea.STATE_SET, ['SET', 'RESET']).withDescription('Reset / Set the upper stroke limit'),
+            e.enum('middle_stroke_limit', ea.STATE_SET, ['SET', 'RESET']).withDescription('Reset / Set the middle stroke limit'),
+            e.enum('lower_stroke_limit', ea.STATE_SET, ['SET', 'RESET']).withDescription('Reset / Set the lower stroke limit'),
+        ],
+        meta: {
+            // All datapoints go in here
+            tuyaDatapoints: [
+                [103, 'upper_stroke_limit', tuya.valueConverterBasic.lookup({'SET': tuya.enum(1), 'RESET': tuya.enum(0)})],
+                [104, 'middle_stroke_limit', tuya.valueConverterBasic.lookup({'SET': tuya.enum(1), 'RESET': tuya.enum(0)})],
+                [105, 'lower_stroke_limit', tuya.valueConverterBasic.lookup({'SET': tuya.enum(1), 'RESET': tuya.enum(0)})],
+            ],
+        },
+    },
     {
         zigbeeModel: ['NUET56-DL27LX1.1'],
         model: 'LXZB-12A',
         vendor: 'Zemismart',
         description: 'RGB LED downlight',
-        extend: extend.light_onoff_brightness_colortemp_color(),
+        extend: [light({colorTemp: {range: undefined}, color: true})],
     },
     {
         zigbeeModel: ['LXT56-LS27LX1.6'],
         model: 'HGZB-DLC4-N15B',
         vendor: 'Zemismart',
         description: 'RGB LED downlight',
-        extend: extend.light_onoff_brightness_colortemp_color(),
+        extend: [light({colorTemp: {range: undefined}, color: true})],
     },
     {
         zigbeeModel: ['TS0302'],
@@ -64,12 +86,7 @@ const definitions: Definition[] = [
         model: 'LXN56-SS27LX1.1',
         vendor: 'Zemismart',
         description: 'Smart light switch - 2 gang with neutral wire',
-        extend: extend.switch(),
-        configure: async (device, coordinatorEndpoint, logger) => {
-            const endpoint = device.getEndpoint(10);
-            await reporting.bind(endpoint, coordinatorEndpoint, ['genOnOff']);
-            await reporting.onOff(endpoint);
-        },
+        extend: [onOff()],
     },
     {
         fingerprint: [{modelID: 'TS0601', manufacturerName: '_TZE200_zqtiam4u'}],
@@ -110,7 +127,8 @@ const definitions: Definition[] = [
         model: 'ZM25RX-08/30',
         vendor: 'Zemismart',
         description: 'Tubular motor',
-        onEvent: tuya.onEvent(),
+        // mcuVersionResponse spsams: https://github.com/Koenkk/zigbee2mqtt/issues/19817
+        onEvent: tuya.onEvent({respondToMcuVersionResponse: false}),
         configure: tuya.configureMagicPacket,
         fromZigbee: [tuya.fz.datapoints],
         toZigbee: [tuya.tz.datapoints],
@@ -126,19 +144,26 @@ const definitions: Definition[] = [
         ],
         meta: {
             tuyaDatapoints: [
-                [1, 'state', tuya.valueConverterBasic.lookup({'OPEN': tuya.enum(2), 'STOP': tuya.enum(1), 'CLOSE': tuya.enum(0)})],
+                [1, 'state', tuya.valueConverterBasic.lookup(
+                    (options) => options.invert_cover ?
+                        {'OPEN': tuya.enum(2), 'STOP': tuya.enum(1), 'CLOSE': tuya.enum(0)} :
+                        {'OPEN': tuya.enum(0), 'STOP': tuya.enum(1), 'CLOSE': tuya.enum(2)},
+                )],
                 [2, 'position', tuya.valueConverter.coverPosition],
                 [3, 'position', tuya.valueConverter.coverPosition],
                 [5, 'motor_direction', tuya.valueConverter.tubularMotorDirection],
-                [7, 'work_state', tuya.valueConverterBasic.lookup({'closing': tuya.enum(0), 'opening': tuya.enum(1)})],
+                [7, 'work_state', tuya.valueConverterBasic.lookup(
+                    (options) => options.invert_cover ?
+                        {'opening': tuya.enum(1), 'closing': tuya.enum(0)} :
+                        {'opening': tuya.enum(0), 'closing': tuya.enum(1)},
+                )],
                 [13, 'battery', tuya.valueConverter.raw],
-                [101, 'program', tuya.valueConverterBasic.lookup({
-                    'set_bottom': tuya.enum(0), 'set_upper': tuya.enum(1), 'reset': tuya.enum(4),
-                }, null)],
-                [101, 'click_control', tuya.valueConverterBasic.lookup({
-                    'lower': tuya.enum(2), 'upper': tuya.enum(3),
-                    'lower_micro': tuya.enum(5), 'upper_micro': tuya.enum(6),
-                }, null)],
+                [101, 'program', tuya.valueConverterBasic.lookup((options) => options.invert_cover ?
+                    {'set_bottom': tuya.enum(0), 'set_upper': tuya.enum(1), 'reset': tuya.enum(4)} :
+                    {'set_bottom': tuya.enum(1), 'set_upper': tuya.enum(0), 'reset': tuya.enum(4)}, null)],
+                [101, 'click_control', tuya.valueConverterBasic.lookup((options) => options.invert_cover ?
+                    {'lower': tuya.enum(2), 'upper': tuya.enum(3), 'lower_micro': tuya.enum(5), 'upper_micro': tuya.enum(6)} :
+                    {'lower': tuya.enum(3), 'upper': tuya.enum(2), 'lower_micro': tuya.enum(6), 'upper_micro': tuya.enum(5)}, null)],
             ],
         },
     },
@@ -189,6 +214,7 @@ const definitions: Definition[] = [
         fromZigbee: [legacy.fz.tuya_cover, fz.ignore_basic_report],
         toZigbee: [legacy.tz.tuya_cover_control, legacy.tz.tuya_cover_options, legacy.tz.tuya_data_point_test],
         exposes: [e.cover_position().setAccess('position', ea.STATE_SET)],
+        extend: [forcePowerSource({powerSource: 'Mains (single phase)'})],
     },
     {
         fingerprint: [{modelID: 'TS0601', manufacturerName: '_TZE200_1n2kyphz'}, {modelID: 'TS0601', manufacturerName: '_TZE200_shkxsgis'}],
@@ -245,4 +271,5 @@ const definitions: Definition[] = [
     },
 ];
 
+export default definitions;
 module.exports = definitions;

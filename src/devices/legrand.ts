@@ -6,7 +6,7 @@ import tz from '../converters/toZigbee';
 import * as reporting from '../lib/reporting';
 import extend from '../lib/extend';
 import * as ota from '../lib/ota';
-import {tzLegrand, fzLegrand, readInitialBatteryState, _067776} from '../lib/legrand';
+import {tzLegrand, fzLegrand, readInitialBatteryState, _067776, legrandOptions} from '../lib/legrand';
 const e = exposes.presets;
 const ea = exposes.access;
 
@@ -49,7 +49,6 @@ const definitions: Definition[] = [
             await reporting.readEletricalMeasurementMultiplierDivisors(endpoint);
             await reporting.activePower(endpoint);
             // Read configuration values that are not sent periodically as well as current power (activePower).
-            // @ts-expect-error
             await endpoint.read('haElectricalMeasurement', ['activePower', 0xf000, 0xf001, 0xf002]);
         },
     },
@@ -118,8 +117,7 @@ const definitions: Definition[] = [
             await readInitialBatteryState(type, data, device, options, state);
             if (data.type === 'commandCheckin' && data.cluster === 'genPollCtrl') {
                 const endpoint = device.getEndpoint(1);
-                const options = {manufacturerCode: 0x1021, disableDefaultResponse: true};
-                await endpoint.command('genPollCtrl', 'fastPollStop', {}, options);
+                await endpoint.command('genPollCtrl', 'fastPollStop', {}, legrandOptions);
             }
         },
         configure: async (device, coordinatorEndpoint, logger) => {
@@ -151,10 +149,10 @@ const definitions: Definition[] = [
             const endpoint = device.getEndpoint(1);
             await reporting.bind(endpoint, coordinatorEndpoint, ['genBinaryInput', 'closuresWindowCovering', 'genIdentify']);
             let p = reporting.payload('currentPositionLiftPercentage', 1, 120, 1);
-            await endpoint.configureReporting('closuresWindowCovering', p, {manufacturerCode: 4129});
+            await endpoint.configureReporting('closuresWindowCovering', p, legrandOptions);
 
             p = reporting.payload('currentPositionTiltPercentage', 1, 120, 1);
-            await endpoint.configureReporting('closuresWindowCovering', p, {manufacturerCode: 4129});
+            await endpoint.configureReporting('closuresWindowCovering', p, legrandOptions);
         },
     },
     {
@@ -212,10 +210,10 @@ const definitions: Definition[] = [
             const endpoint = device.getEndpoint(1);
             await reporting.bind(endpoint, coordinatorEndpoint, ['genBinaryInput', 'closuresWindowCovering', 'genIdentify']);
             let p = reporting.payload('currentPositionLiftPercentage', 1, 120, 1);
-            await endpoint.configureReporting('closuresWindowCovering', p, {manufacturerCode: 4129});
+            await endpoint.configureReporting('closuresWindowCovering', p, legrandOptions);
 
             p = reporting.payload('currentPositionTiltPercentage', 1, 120, 1);
-            await endpoint.configureReporting('closuresWindowCovering', p, {manufacturerCode: 4129});
+            await endpoint.configureReporting('closuresWindowCovering', p, legrandOptions);
         },
     },
     {
@@ -285,7 +283,6 @@ const definitions: Definition[] = [
         model: '067771',
         vendor: 'Legrand',
         description: 'Wired switch without neutral',
-        extend: extend.light_onoff_brightness({noConfigure: true}),
         ota: ota.zigbeeOTA,
         fromZigbee: [fz.brightness, fz.identify, fz.on_off, fz.lighting_ballast_configuration, fzLegrand.cluster_fc01,
             fz.power_on_behavior],
@@ -318,7 +315,6 @@ const definitions: Definition[] = [
         model: '199182',
         vendor: 'Legrand',
         description: 'Wired switch without neutral',
-        extend: extend.light_onoff_brightness({noConfigure: true}),
         ota: ota.zigbeeOTA,
         fromZigbee: [fz.brightness, fz.identify, fz.on_off, fz.lighting_ballast_configuration, fzLegrand.cluster_fc01,
             fz.power_on_behavior],
@@ -414,8 +410,7 @@ const definitions: Definition[] = [
             if (data.type === 'commandCheckin' && data.cluster === 'genPollCtrl') {
                 // TODO current solution is a work around, it would be cleaner to answer to the request
                 const endpoint = device.getEndpoint(1);
-                const options = {manufacturerCode: 0x1021, disableDefaultResponse: true};
-                await endpoint.command('genPollCtrl', 'fastPollStop', {}, options);
+                await endpoint.command('genPollCtrl', 'fastPollStop', {}, legrandOptions);
             }
         },
         configure: async (device, coordinatorEndpoint, logger) => {
@@ -531,11 +526,11 @@ const definitions: Definition[] = [
         vendor: 'Legrand',
         description: 'Cable outlet with pilot wire and consumption measurement',
         ota: ota.zigbeeOTA,
-        fromZigbee: [fzLegrand.cluster_fc01, fz.legrand_cable_outlet_mode, fz.on_off, fz.electrical_measurement, fz.power_on_behavior],
-        toZigbee: [tz.legrand_device_mode, tz.legrand_cable_outlet_mode, tz.on_off, tz.electrical_measurement_power, tz.power_on_behavior],
+        fromZigbee: [fzLegrand.cluster_fc01, fz.legrand_pilot_wire_mode, fz.on_off, fz.electrical_measurement, fz.power_on_behavior],
+        toZigbee: [tz.legrand_device_mode, tz.legrand_pilot_wire_mode, tz.on_off, tz.electrical_measurement_power, tz.power_on_behavior],
         exposes: [
             e.binary('device_mode', ea.ALL, 'pilot_on', 'pilot_off'),
-            e.enum('cable_outlet_mode', ea.ALL, ['comfort', 'comfort-1', 'comfort-2', 'eco', 'frost_protection', 'off']),
+            e.pilot_wire_mode(),
             e.switch().withState('state', true, 'Works only when the pilot wire is deactivated'),
             e.power().withAccess(ea.STATE_GET),
             e.power_apparent(),
@@ -556,7 +551,6 @@ const definitions: Definition[] = [
         model: '067772',
         vendor: 'Legrand',
         description: 'Double wired switch with neutral',
-        extend: extend.light_onoff_brightness({noConfigure: true}),
         ota: ota.zigbeeOTA,
         meta: {multiEndpoint: true},
         fromZigbee: [fz.brightness, fz.identify, fz.on_off, fz.legrand_binary_input_on_off, fz.lighting_ballast_configuration,
@@ -645,7 +639,6 @@ const definitions: Definition[] = [
         model: 'WNAL50/WNRL50',
         vendor: 'Legrand',
         description: 'Smart dimmer switch with Netatmo',
-        extend: extend.light_onoff_brightness({noConfigure: true}),
         fromZigbee: [fz.brightness, fz.identify, fz.on_off, fz.lighting_ballast_configuration, fzLegrand.cluster_fc01,
             fz.power_on_behavior],
         toZigbee: [tz.light_onoff_brightness, tzLegrand.led_mode, tz.legrand_device_mode, tz.legrand_identify,
@@ -718,4 +711,5 @@ const definitions: Definition[] = [
     },
 ];
 
+export default definitions;
 module.exports = definitions;

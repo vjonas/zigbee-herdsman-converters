@@ -26,6 +26,7 @@ const definitions: Definition[] = [
         fingerprint: [
             {modelID: 'TS0601', manufacturerName: '_TZE200_gz3n0tzf'},
             {modelID: 'TS0601', manufacturerName: '_TZE200_nthosjmx'},
+            {modelID: 'TS0601', manufacturerName: '_TZE200_na98lvjp'},
         ],
         model: 'WZ5_cct',
         vendor: 'Skydance',
@@ -35,6 +36,9 @@ const definitions: Definition[] = [
         exposes: [
             e.light().withBrightness().setAccess('state',
                 ea.STATE_SET).setAccess('brightness', ea.STATE_SET).withColorTemp([250, 454]).setAccess('color_temp', ea.STATE_SET),
+        ],
+        whiteLabel: [
+            tuya.whitelabel('Ltech', 'TY-75-24-G2Z2_CCT', '150W 24V Zigbee CV tunable white LED driver', ['_TZE200_na98lvjp']),
         ],
     },
     {
@@ -112,4 +116,5 @@ const definitions: Definition[] = [
     },
 ];
 
+export default definitions;
 module.exports = definitions;

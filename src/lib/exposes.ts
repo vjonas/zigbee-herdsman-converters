@@ -5,7 +5,7 @@ import assert from 'assert';
 import {Range} from './types';
 import {getLabelFromName} from './utils';
 
-type Feature = Numeric | Binary | Enum | Composite | List | Text;
+export type Feature = Numeric | Binary | Enum | Composite | List | Text;
 
 export class Base {
     name: string;
@@ -16,6 +16,7 @@ export class Base {
     property?: string;
     description?: string;
     features?: Feature[];
+    category?: 'config' | 'diagnostic';
 
     withEndpoint(endpointName: string) {
         this.endpoint = endpointName;
@@ -37,8 +38,9 @@ export class Base {
     }
 
     withAccess(a: number) {
-        assert(this.hasOwnProperty('access'), 'Cannot add access if not defined yet');
+        assert(this.access !== undefined, 'Cannot add access if not defined yet');
         this.access = a;
+        this.validateCategory();
         return this;
     }
 
@@ -57,6 +59,23 @@ export class Base {
         return this;
     }
 
+    withCategory(category: 'config' | 'diagnostic') {
+        this.category = category;
+        this.validateCategory();
+        return this;
+    }
+
+    validateCategory() {
+        switch (this.category) {
+        case 'config':
+            assert(this.access & a.SET, 'Config expose must be settable');
+            break;
+        case 'diagnostic':
+            assert(!(this.access & a.SET), 'Diagnostic expose must not be settable');
+            break;
+        }
+    }
+
     removeFeature(feature: string) {
         assert(this.features, 'Does not have any features');
         const f = this.features.find((f) => f.name === feature);
@@ -70,6 +89,7 @@ export class Base {
         const f = this.features.find((f) => f.name === feature);
         assert(f.access !== a, `Access mode not changed for '${f.name}'`);
         f.access = a;
+        f.validateCategory();
         return this;
     }
 }
@@ -274,32 +294,45 @@ export class Light extends Base {
         return this;
     }
 
-    withLevelConfig() {
+    withLevelConfig(disableFeatures: string[] = []) {
         assert(!this.endpoint, 'Cannot add feature after adding endpoint');
-        const levelConfig = new Composite('level_config', 'level_config', access.ALL)
-            .withFeature(new Numeric('on_off_transition_time', access.ALL)
+        let levelConfig = new Composite('level_config', 'level_config', access.ALL);
+        if (!disableFeatures.includes('on_off_transition_time')) {
+            levelConfig = levelConfig.withFeature(new Numeric('on_off_transition_time', access.ALL)
                 .withLabel('ON/OFF transition time')
-                .withDescription('Represents the time taken to move to or from the target level when On of Off commands are received by an On/Off cluster'),
-            )
-            .withFeature(new Numeric('on_transition_time', access.ALL)
+                .withDescription('Represents the time taken to move to or from the target level when On of Off commands are received by an On/Off cluster'));
+        }
+        if (!disableFeatures.includes('on_transition_time')) {
+            levelConfig = levelConfig.withFeature(new Numeric('on_transition_time', access.ALL)
                 .withLabel('ON transition time')
                 .withPreset('disabled', 65535, 'Use on_off_transition_time value')
-                .withDescription('Represents the time taken to move the current level from the minimum level to the maximum level when an On command is received'),
-            )
-            .withFeature(new Numeric('off_transition_time', access.ALL)
+                .withDescription('Represents the time taken to move the current level from the minimum level to the maximum level when an On command is received'));
+        }
+        if (!disableFeatures.includes('off_transition_time')) {
+            levelConfig = levelConfig.withFeature(new Numeric('off_transition_time', access.ALL)
                 .withLabel('OFF transition time')
                 .withPreset('disabled', 65535, 'Use on_off_transition_time value')
-                .withDescription('Represents the time taken to move the current level from the maximum level to the minimum level when an Off command is received'),
-            )
-            .withFeature(new Numeric('current_level_startup', access.ALL)
+                .withDescription('Represents the time taken to move the current level from the maximum level to the minimum level when an Off command is received'));
+        }
+        if (!disableFeatures.includes('execute_if_off')) {
+            levelConfig = levelConfig.withFeature(new Binary('execute_if_off', access.ALL, true, false)
+                .withDescription('this setting can affect the "on_level", "current_level_startup" or "brightness" setting'));
+        }
+        if (!disableFeatures.includes('on_level')) {
+            levelConfig = levelConfig.withFeature(new Numeric('on_level', access.ALL)
+                .withValueMin(1).withValueMax(254)
+                .withPreset('previous', 255, 'Use previous value')
+                .withDescription('Specifies the level that shall be applied, when an on/toggle command causes the light to turn on.'));
+        }
+        if (!disableFeatures.includes('current_level_startup')) {
+            levelConfig = levelConfig.withFeature(new Numeric('current_level_startup', access.ALL)
                 .withValueMin(1).withValueMax(254)
                 .withPreset('minimum', 0, 'Use minimum permitted value')
                 .withPreset('previous', 255, 'Use previous value')
-                .withDescription('Defines the desired startup level for a device when it is supplied with power'),
-            )
-            .withDescription('Configure genLevelCtrl');
+                .withDescription('Defines the desired startup level for a device when it is supplied with power'));
+        }
+        levelConfig = levelConfig.withDescription('Configure genLevelCtrl');
         this.features.push(levelConfig);
-
         return this;
     }
 
@@ -577,7 +610,7 @@ const a = access;
 
 export const options = {
     calibration: (name: string, type='absolute') => new Numeric(`${name}_calibration`, access.SET).withDescription(`Calibrates the ${name} value (${type} offset), takes into effect on next report of device.`),
-    precision: (name: string) => new Numeric(`${name}_precision`, access.SET).withValueMin(0).withValueMax(3).withDescription(`Number of digits after decimal point for ${name}, takes into effect on next report of device.`),
+    precision: (name: string) => new Numeric(`${name}_precision`, access.SET).withValueMin(0).withValueMax(3).withDescription(`Number of digits after decimal point for ${name}, takes into effect on next report of device. This option can only decrease the precision, not increase it.`),
     invert_cover: () => new Binary(`invert_cover`, access.SET, true, false).withDescription(`Inverts the cover position, false: open=100,close=0, true: open=0,close=100 (default false).`),
     color_sync: () => new Binary(`color_sync`, access.SET, true, false).withDescription(`When enabled colors will be synced, e.g. if the light supports both color x/y and color temperature a conversion from color x/y to color temperature will be done when setting the x/y color (default true).`),
     thermostat_unit: () => new Enum('thermostat_unit', access.SET, ['celsius', 'fahrenheit']).withDescription('Controls the temperature unit of the thermostat (default celsius).'),
@@ -625,7 +658,7 @@ export const presets = {
     away_mode: () => new Switch().withLabel('Away mode').withState('away_mode', false, 'Enable/disable away mode', access.STATE_SET),
     away_preset_days: () => new Numeric('away_preset_days', access.STATE_SET).withDescription('Away preset days').withValueMin(0).withValueMax(100),
     away_preset_temperature: () => new Numeric('away_preset_temperature', access.STATE_SET).withUnit('°C').withDescription('Away preset temperature').withValueMin(-10).withValueMax(35),
-    battery: () => new Numeric('battery', access.STATE).withUnit('%').withDescription('Remaining battery in %, can take up to 24 hours before reported.').withValueMin(0).withValueMax(100),
+    battery: () => new Numeric('battery', access.STATE).withUnit('%').withDescription('Remaining battery in %, can take up to 24 hours before reported').withValueMin(0).withValueMax(100),
     battery_low: () => new Binary('battery_low', access.STATE, true, false).withDescription('Indicates if the battery of this device is almost empty'),
     battery_voltage: () => new Numeric('voltage', access.STATE).withUnit('mV').withDescription('Voltage of the battery in millivolts'),
     boost_time: () => new Numeric('boost_time', access.STATE_SET).withUnit('s').withDescription('Boost time').withValueMin(0).withValueMax(900),
@@ -702,10 +735,10 @@ export const presets = {
     pm25: () => new Numeric('pm25', access.STATE).withLabel('PM25').withUnit('µg/m³').withDescription('Measured PM2.5 (particulate matter) concentration'),
     position: () => new Numeric('position', access.STATE).withUnit('%').withDescription('Position'),
     power: () => new Numeric('power', access.STATE).withUnit('W').withDescription('Instantaneous measured power'),
-    power_factor: () => new Numeric('power_factor', access.STATE).withUnit('%').withDescription('Instantaneous measured power factor'),
+    power_factor: () => new Numeric('power_factor', access.STATE).withDescription('Instantaneous measured power factor'),
     power_apparent: () => new Numeric('power_apparent', access.STATE).withUnit('VA').withDescription('Instantaneous measured apparent power'),
-    power_on_behavior: (values=['off', 'previous', 'on']) => new Enum('power_on_behavior', access.ALL, values).withLabel('Power-on behavior').withDescription('Controls the behavior when the device is powered on after power loss'),
-    power_outage_count: (resetsWhenPairing = true) => new Numeric('power_outage_count', access.STATE).withDescription('Number of power outages' + (resetsWhenPairing ? ' (since last pairing)' : '')),
+    power_on_behavior: (values=['off', 'previous', 'on']) => new Enum('power_on_behavior', access.ALL, values).withLabel('Power-on behavior').withDescription('Controls the behavior when the device is powered on after power loss. If you get an `UNSUPPORTED_ATTRIBUTE` error, the device does not support it.'),
+    power_outage_count: (resetsWhenPairing = true) => new Numeric('power_outage_count', access.STATE).withDescription('Number of power outages' + (resetsWhenPairing ? ' (since last pairing)' : '')).withCategory('diagnostic'),
     power_outage_memory: () => new Binary('power_outage_memory', access.ALL, true, false).withDescription('Enable/disable the power outage memory, this recovers the on/off mode after power failure'),
     power_reactive: () => new Numeric('power_reactive', access.STATE).withUnit('VAR').withDescription('Instantaneous measured reactive power'),
     presence: () => new Binary('presence', access.STATE, true, false).withDescription('Indicates whether the device detected presence'),
@@ -717,6 +750,7 @@ export const presets = {
     sound_volume: () => new Enum('sound_volume', access.ALL, ['silent_mode', 'low_volume', 'high_volume']).withDescription('Sound volume of the lock'),
     switch: () => new Switch().withState('state', true, 'On/off state of the switch'),
     switch_type: () => new Enum('switch_type', access.ALL, ['toggle', 'momentary']).withDescription('Wall switch type'),
+    door_state: () => new Enum('door_state', access.STATE, ['open', 'closed', 'error_jammed', 'error_forced_open', 'error_unspecified', 'undefined']).withDescription('State of the door'),
     tamper: () => new Binary('tamper', access.STATE, true, false).withDescription('Indicates whether the device is tampered'),
     temperature: () => new Numeric('temperature', access.STATE).withUnit('°C').withDescription('Measured temperature value'),
     temperature_sensor_select: (sensor_names: string[]) => new Enum('sensor', access.STATE_SET, sensor_names).withDescription('Select temperature sensor to use'),
@@ -732,6 +766,7 @@ export const presets = {
     voltage_phase_b: () => new Numeric('voltage_phase_b', access.STATE).withLabel('Voltage phase B').withUnit('V').withDescription('Measured electrical potential value on phase B'),
     voltage_phase_c: () => new Numeric('voltage_phase_c', access.STATE).withLabel('Voltage phase C').withUnit('V').withDescription('Measured electrical potential value on phase C'),
     water_leak: () => new Binary('water_leak', access.STATE, true, false).withDescription('Indicates whether the device detected a water leak'),
+    pilot_wire_mode: (values=['comfort', 'eco', 'frost_protection', 'off', 'comfort_-1', 'comfort_-2']) => new Enum('pilot_wire_mode', access.ALL, ['comfort', 'eco', 'frost_protection', 'off', 'comfort_-1', 'comfort_-2']).withDescription('Controls the target temperature of the heater, with respect to the temperature set on that heater. Possible values: comfort (target temperature = heater set temperature) eco (target temperature = heater set temperature - 3.5°C), frost_protection (target temperature = 7 to 8°C), off (heater stops heating), and the less commonly used comfort_-1 (target temperature = heater set temperature - 1°C), comfort_-2 (target temperature = heater set temperature - 2°C),.'),
     rain: () => new Binary('rain', access.STATE, true, false).withDescription('Indicates whether the device detected rainfall'),
     warning: () => new Composite('warning', 'warning', access.SET)
         .withFeature(new Enum('mode', access.SET, ['stop', 'burglar', 'fire', 'emergency', 'police_panic', 'fire_panic', 'emergency_panic']).withDescription('Mode of the warning (sound effect)'))
