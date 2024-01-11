@@ -942,7 +942,7 @@ const definitions: Definition[] = [
                     dataToSend.command,
                     dataToSend.payload,
                     {
-                        ...boschManufacturer,
+                        ...manufacturerOptions,
                         ...utils.getOptions(meta.mapped, entity),
                     },
                 );
@@ -954,14 +954,14 @@ const definitions: Definition[] = [
                     await entity.read(
                         'ssIasZone',
                         [0xf0],
-                        boschManufacturer,
+                        manufacturerOptions,
                     );
                     break;
                 case 'intruder_state':
                     await entity.read(
                         'ssIasZone',
                         [0xf0],
-                        boschManufacturer,
+                        manufacturerOptions,
                     );
                     break;
                 default: // Unknown key
