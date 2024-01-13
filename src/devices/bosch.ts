@@ -918,17 +918,28 @@ const definitions: Definition[] = [
         description: 'Smoke alarm detector',
         fromZigbee: [fz.battery, fz.ias_smoke_alarm_1],
         toZigbee: [{
-            key: ['intruder_alarm_state', 'smoke_alarm_state'],
-            convertSet: async (entity, key, value:smokeSensorData, meta) => {
-                const dataToSend = {
-                    cluster: value?.cluster,
-                    command: value?.command,
-                    payload: value?.payload,
-                };
+            key: ['intruder_alarm_state', 'smoke_alarm_state', 'alarm_state'],
+            // convertSet: async (entity, key, value:smokeSensorData, meta) => {
+            convertSet: async (entity, key, value:string, meta) => {
+                // const dataToSend = {
+                //     cluster: value?.cluster,
+                //     command: value?.command,
+                //     payload: value?.payload,
+                // };
+                const dataToSend = {cluster: '', payload: {data: ''}, command: 0};
                 console.log('key', key, 'value:', JSON.stringify(value));
-                if (key === 'smoke_alarm_state' || key==='intruder_alarm_state') {
+                // if (key === 'smoke_alarm_state' || key==='intruder_alarm_state' || key==='alarm_state') {
+                //     dataToSend.cluster = 'ssIasZone';
+                //     dataToSend.payload = {data: value};
+                //     dataToSend.command = 128;
+                // }
+                if (key==='alarm_state') {
+                    let convertedValue = '';
+                    if (value ==='INTRUDER') convertedValue=smokeDetectorAlarmState.intruder_on.toString();
+                    if (value ==='SMOKE') convertedValue=smokeDetectorAlarmState.smoke_on.toString();
+                    if (value ==='OFF') convertedValue=smokeDetectorAlarmState.smoke_off.toString();
                     dataToSend.cluster = 'ssIasZone';
-                    dataToSend.payload = {data: value};
+                    dataToSend.payload = {data: convertedValue};
                     dataToSend.command = 128;
                 }
 
