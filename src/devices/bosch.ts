@@ -925,6 +925,7 @@ const definitions: Definition[] = [
                     command: value?.command,
                     payload: value?.payload,
                 };
+                console.log('key', key, 'value:', JSON.stringify(value));
                 if (key === 'smoke_alarm_state' || key==='intruder_alarm_state') {
                     dataToSend.cluster = 'ssIasZone';
                     dataToSend.payload = {data: value};
@@ -1000,7 +1001,8 @@ const definitions: Definition[] = [
                     smokeDetectorAlarmState.smoke_on.toString(),
                     smokeDetectorAlarmState.smoke_off.toString(),
                 )
-                .withDescription('Toggle the smoke alarm on or off')],
+                .withDescription('Toggle the smoke alarm on or off'),
+            e.enum('alarm_state', 2, ['OFF', 'INTRUDER', 'SMOKE'])],
     },
     {
         zigbeeModel: ['RFDL-ZB', 'RFDL-ZB-EU', 'RFDL-ZB-H', 'RFDL-ZB-K', 'RFDL-ZB-CHI', 'RFDL-ZB-MS', 'RFDL-ZB-ES', 'RFPR-ZB',
